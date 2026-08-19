@@ -180,7 +180,7 @@ function NotConfiguredNotice({ code }: { code: string }) {
   return (
     <NoticeCard
       title="実データはまだ設定されていません"
-      description={`J-Quants APIキー(JQUANTS_MAIL_ADDRESS / JQUANTS_PASSWORD)が未設定のため、銘柄コード ${code} の実データを表示できません。`}
+      description={`J-Quantsの認証情報(JQUANTS_REFRESH_TOKEN、またはJQUANTS_MAIL_ADDRESS/JQUANTS_PASSWORD)が未設定のため、銘柄コード ${code} の実データを表示できません。`}
     />
   )
 }

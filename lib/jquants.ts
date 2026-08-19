@@ -1,10 +1,17 @@
 /**
  * J-Quants API (JPX公式・株価データ) のクライアント。
  *
- * 認証はメールアドレス/パスワード → refreshToken → idToken の2段階。
- * 環境変数 JQUANTS_MAIL_ADDRESS / JQUANTS_PASSWORD が未設定の場合は
- * JQuantsNotConfiguredError を投げるので、呼び出し側でハンドリングして
- * 「実データ未設定」の表示に切り替えること。
+ * 認証は2通りに対応している(どちらか一方が設定されていればよい):
+ *   1. JQUANTS_REFRESH_TOKEN を直接設定(J-Quantsのマイページにログイン後、
+ *      表示されているリフレッシュトークンをコピーする方法。SSOログインで
+ *      パスワードを発行していない場合はこちらを使う)。
+ *      ただしリフレッシュトークンは発行から約1週間で失効するため、
+ *      失効したら再度マイページから取得し、環境変数を更新する必要がある。
+ *   2. JQUANTS_MAIL_ADDRESS / JQUANTS_PASSWORD を設定(メールアドレス/パスワードで
+ *      ログインする方式。毎回自動でrefreshTokenを取得し直すため更新の手間がない)。
+ *
+ * どちらも未設定の場合は JQuantsNotConfiguredError を投げるので、呼び出し側で
+ * ハンドリングして「実データ未設定」の表示に切り替えること。
  *
  * 参考: https://jpx.gitbook.io/j-quants-ja/api-reference
  * (このプロジェクトのサンドボックス環境からは外部ドキュメントを直接参照できないため、
@@ -18,7 +25,9 @@ const BASE_URL = 'https://api.jquants.com/v1'
 
 export class JQuantsNotConfiguredError extends Error {
   constructor() {
-    super('JQUANTS_MAIL_ADDRESS / JQUANTS_PASSWORD is not configured')
+    super(
+      'Neither JQUANTS_REFRESH_TOKEN nor JQUANTS_MAIL_ADDRESS/JQUANTS_PASSWORD is configured',
+    )
     this.name = 'JQuantsNotConfiguredError'
   }
 }
@@ -50,22 +59,28 @@ async function fetchIdToken(): Promise<string> {
   }
   if (inFlightAuth) return inFlightAuth
 
+  const staticRefreshToken = process.env.JQUANTS_REFRESH_TOKEN
   const mailaddress = process.env.JQUANTS_MAIL_ADDRESS
   const password = process.env.JQUANTS_PASSWORD
-  if (!mailaddress || !password) {
+  if (!staticRefreshToken && (!mailaddress || !password)) {
     throw new JQuantsNotConfiguredError()
   }
 
   inFlightAuth = (async () => {
-    const authRes = await fetch(`${BASE_URL}/token/auth_user`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ mailaddress, password }),
-    })
-    if (!authRes.ok) {
-      throw new JQuantsApiError('/token/auth_user', authRes.status)
+    let refreshToken: string
+    if (staticRefreshToken) {
+      refreshToken = staticRefreshToken
+    } else {
+      const authRes = await fetch(`${BASE_URL}/token/auth_user`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ mailaddress, password }),
+      })
+      if (!authRes.ok) {
+        throw new JQuantsApiError('/token/auth_user', authRes.status)
+      }
+      ;({ refreshToken } = (await authRes.json()) as { refreshToken: string })
     }
-    const { refreshToken } = (await authRes.json()) as { refreshToken: string }
 
     const refreshRes = await fetch(
       `${BASE_URL}/token/auth_refresh?refreshtoken=${encodeURIComponent(refreshToken)}`,
@@ -234,5 +249,8 @@ export function defaultQuoteRange(years = 2): { from: string; to: string } {
 }
 
 export function isJQuantsConfigured(): boolean {
-  return Boolean(process.env.JQUANTS_MAIL_ADDRESS && process.env.JQUANTS_PASSWORD)
+  return Boolean(
+    process.env.JQUANTS_REFRESH_TOKEN ||
+      (process.env.JQUANTS_MAIL_ADDRESS && process.env.JQUANTS_PASSWORD),
+  )
 }
