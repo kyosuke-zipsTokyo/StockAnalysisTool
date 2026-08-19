@@ -15,7 +15,14 @@ const PAD_RIGHT = 4
 const VOL_HEIGHT = 48
 const VOL_GAP = 10
 
-export function PriceChart({ series }: { series: OHLC[] }) {
+export function PriceChart({
+  series,
+  dateSuffix,
+}: {
+  series: OHLC[]
+  /** 日付ラベルの補足(例: デモページでは「(擬似データ)」)。省略時は付与しない。 */
+  dateSuffix?: string
+}) {
   const [hoverIndex, setHoverIndex] = useState<number | null>(null)
 
   const closes = useMemo(() => series.map((d) => d.close), [series])
@@ -70,7 +77,10 @@ export function PriceChart({ series }: { series: OHLC[] }) {
           <span className="font-heading text-2xl font-bold tabular-nums">
             {formatJpy(active.close)}
           </span>
-          <span className="text-xs text-muted-foreground">{active.date}(擬似データ)</span>
+          <span className="text-xs text-muted-foreground">
+            {active.date}
+            {dateSuffix ? `(${dateSuffix})` : ''}
+          </span>
         </div>
         <div className="flex items-center gap-3 text-xs text-muted-foreground">
           <span className="flex items-center gap-1">

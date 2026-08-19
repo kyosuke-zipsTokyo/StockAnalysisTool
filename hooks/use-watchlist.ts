@@ -2,21 +2,33 @@
 
 import { useCallback, useEffect, useState } from 'react'
 
-import { getWatchlist, subscribeWatchlist, toggleWatchlist } from '@/lib/watchlist'
+import {
+  getWatchlist,
+  subscribeWatchlist,
+  toggleWatchlist,
+  type WatchlistEntry,
+  type WatchlistKind,
+} from '@/lib/watchlist'
 
 export function useWatchlist() {
-  const [codes, setCodes] = useState<string[]>([])
+  const [entries, setEntries] = useState<WatchlistEntry[]>([])
   const [ready, setReady] = useState(false)
 
   useEffect(() => {
-    setCodes(getWatchlist())
+    setEntries(getWatchlist())
     setReady(true)
-    return subscribeWatchlist(() => setCodes(getWatchlist()))
+    return subscribeWatchlist(() => setEntries(getWatchlist()))
   }, [])
 
-  const toggle = useCallback((code: string) => {
-    toggleWatchlist(code)
+  const toggle = useCallback((kind: WatchlistKind, code: string) => {
+    toggleWatchlist(kind, code)
   }, [])
 
-  return { codes, ready, toggle, isWatched: (code: string) => codes.includes(code) }
+  return {
+    entries,
+    ready,
+    toggle,
+    isWatched: (kind: WatchlistKind, code: string) =>
+      entries.some((e) => e.kind === kind && e.code === code),
+  }
 }

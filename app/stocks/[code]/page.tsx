@@ -1,85 +1,72 @@
+import Link from 'next/link'
+import { Suspense } from 'react'
 import { notFound } from 'next/navigation'
-import {
-  Newspaper,
-  Users,
-  ShieldAlert,
-  TrendingUp,
-  FileText,
-  Quote,
-  Gauge,
-  Building2,
-  ExternalLink,
-} from 'lucide-react'
+import { Building2, FileText, Info, TrendingUp } from 'lucide-react'
 
-import { companies, findCompany } from '@/lib/companies'
-import { generatePriceSeries } from '@/lib/price-series'
+import {
+  JQuantsNotConfiguredError,
+  defaultQuoteRange,
+  findListedInfo,
+  getDailyQuotes,
+  getFinancialStatements,
+  isJQuantsConfigured,
+  toOhlcSeries,
+} from '@/lib/jquants'
+import { computeFundamentals } from '@/lib/fundamentals'
 import { computeTrendTendency, referenceRange } from '@/lib/stats'
-import { newsSourceUrl, managementCommentSourceUrl } from '@/lib/source-link'
-import { formatJpy, formatOku, formatPct, cn } from '@/lib/utils'
+import { formatJpy, formatOku, formatPct } from '@/lib/utils'
 
 import { PriceChart } from '@/components/price-chart'
 import { TrendIndicator } from '@/components/trend-indicator'
 import { WatchlistButton } from '@/components/watchlist-button'
-import { DisclaimerBanner } from '@/components/disclaimer-banner'
+import { DisclosuresSection } from '@/components/disclosures-section'
 import { SectionHeading } from '@/components/ui/section-heading'
 import { Badge } from '@/components/ui/badge'
-import {
-  Card,
-  CardContent,
-  CardHeader,
-  CardTitle,
-  CardDescription,
-} from '@/components/ui/card'
+import { Card, CardContent } from '@/components/ui/card'
 
-export function generateStaticParams() {
-  return companies.map((c) => ({ code: c.code }))
-}
+export const dynamic = 'force-dynamic'
 
-const toneVariant = {
-  ポジティブ: 'positive',
-  中立: 'outline',
-  ネガティブ: 'destructive',
-} as const
-
-const ratingVariant = {
-  強気: 'positive',
-  中立: 'outline',
-  弱気: 'destructive',
-} as const
-
-const severityVariant = {
-  高: 'destructive',
-  中: 'accent',
-  低: 'outline',
-} as const
-
-export default async function StockDetailPage({
+export default async function RealStockDetailPage({
   params,
 }: {
   params: Promise<{ code: string }>
 }) {
   const { code } = await params
-  const company = findCompany(code)
-  if (!company) notFound()
 
-  const series = generatePriceSeries(
-    company.code,
-    company.basePrice,
-    company.driftPctAnnual,
-    company.volPctAnnual,
-  )
+  if (!isJQuantsConfigured()) {
+    return <NotConfiguredNotice code={code} />
+  }
+
+  let listedInfo
+  let quotes
+  let statements
+  try {
+    ;[listedInfo, quotes, statements] = await Promise.all([
+      findListedInfo(code),
+      getDailyQuotes(code, defaultQuoteRange().from, defaultQuoteRange().to),
+      getFinancialStatements(code).catch(() => []),
+    ])
+  } catch (error) {
+    if (error instanceof JQuantsNotConfiguredError) {
+      return <NotConfiguredNotice code={code} />
+    }
+    return <FetchErrorNotice code={code} />
+  }
+
+  if (!listedInfo) notFound()
+
+  const series = toOhlcSeries(quotes)
+  if (series.length < 40) {
+    return <InsufficientDataNotice code={code} name={listedInfo.CompanyName} />
+  }
+
   const closes = series.map((d) => d.close)
   const trend = computeTrendTendency(closes)
   const range = referenceRange(closes)
   const latest = series[series.length - 1]
   const prev = series[series.length - 2]
   const dayChangePct = prev ? ((latest.close - prev.close) / prev.close) * 100 : 0
-
-  const ratingCounts = { 強気: 0, 中立: 0, 弱気: 0 }
-  company.analystViews.forEach((v) => ratingCounts[v.rating]++)
-  const avgTarget =
-    company.analystViews.reduce((a, v) => a + v.targetPrice, 0) /
-    company.analystViews.length
+  const fundamentals = computeFundamentals(statements, latest.close)
 
   return (
     <div className="flex flex-col gap-6 py-4">
@@ -87,30 +74,32 @@ export default async function StockDetailPage({
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div>
             <div className="flex items-center gap-2 text-xs text-muted-foreground">
-              <span className="font-mono">{company.code}</span>
-              <Badge variant="outline">{company.market}</Badge>
-              <Badge variant="secondary">{company.sector}</Badge>
+              <span className="font-mono">{code}</span>
+              {listedInfo.MarketCodeName ? (
+                <Badge variant="outline">{listedInfo.MarketCodeName}</Badge>
+              ) : null}
+              {listedInfo.Sector33CodeName ? (
+                <Badge variant="secondary">{listedInfo.Sector33CodeName}</Badge>
+              ) : null}
             </div>
             <h1 className="mt-1 font-heading text-xl font-bold sm:text-2xl">
-              {company.name}
+              {listedInfo.CompanyName}
             </h1>
-            <p className="mt-1 max-w-2xl text-sm text-muted-foreground">
-              {company.description}
-            </p>
           </div>
-          <WatchlistButton code={company.code} />
+          <WatchlistButton kind="real" code={code} />
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
           <span
-            className={cn(
-              'rounded-full px-2 py-0.5 text-xs font-medium',
-              dayChangePct >= 0 ? 'bg-positive/15 text-positive' : 'bg-destructive/10 text-destructive',
-            )}
+            className={
+              dayChangePct >= 0
+                ? 'rounded-full bg-positive/15 px-2 py-0.5 text-xs font-medium text-positive'
+                : 'rounded-full bg-destructive/10 px-2 py-0.5 text-xs font-medium text-destructive'
+            }
           >
             前日比 {formatPct(dayChangePct)}
           </span>
           <span className="text-xs text-muted-foreground">
-            擬似データによるデモ表示です
+            データ提供: J-Quants(無料プランのため最大12週間程度の遅延あり) ・ 直近営業日: {latest.date}
           </span>
         </div>
       </section>
@@ -126,179 +115,55 @@ export default async function StockDetailPage({
       <section className="flex flex-col gap-3">
         <SectionHeading
           icon={Building2}
-          title="企業価値・成長余地"
-          description="財務指標と成長ドライバーの整理"
+          title="企業価値"
+          description={
+            fundamentals.latestStatementDate
+              ? `直近開示(${fundamentals.latestStatementDate})の決算短信サマリから算出`
+              : '決算短信サマリが取得できませんでした'
+          }
         />
         <div className="grid grid-cols-2 gap-2.5 sm:grid-cols-3">
-          <Metric label="時価総額" value={formatOku(company.fundamentals.marketCapOku)} />
+          <Metric label="時価総額(概算)" value={fundamentals.marketCapOku != null ? formatOku(fundamentals.marketCapOku) : '—'} />
+          <Metric label="PER(概算)" value={fundamentals.per != null ? `${fundamentals.per.toFixed(1)}倍` : '—'} />
+          <Metric label="PBR(概算)" value={fundamentals.pbr != null ? `${fundamentals.pbr.toFixed(1)}倍` : '—'} />
+          <Metric label="ROE(概算)" value={fundamentals.roe != null ? `${fundamentals.roe.toFixed(1)}%` : '—'} />
           <Metric
-            label="PER"
-            value={company.fundamentals.per > 0 ? `${company.fundamentals.per.toFixed(1)}倍` : '—(赤字)'}
-          />
-          <Metric label="PBR" value={`${company.fundamentals.pbr.toFixed(1)}倍`} />
-          <Metric label="ROE" value={`${company.fundamentals.roe.toFixed(1)}%`} />
-          <Metric label="配当利回り" value={`${company.fundamentals.dividendYieldPct.toFixed(1)}%`} />
-          <Metric
-            label="増収率(YoY)"
-            value={formatPct(company.fundamentals.revenueGrowthYoYPct)}
+            label="増収率(YoY・概算)"
+            value={fundamentals.revenueGrowthYoYPct != null ? formatPct(fundamentals.revenueGrowthYoYPct) : '—'}
           />
         </div>
-        <Card>
-          <CardHeader>
-            <CardTitle>成長ポイント</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <ul className="flex flex-col gap-2 text-sm">
-              {company.growthPoints.map((point, i) => (
-                <li key={i} className="flex gap-2">
-                  <TrendUpDot />
-                  <span>{point}</span>
-                </li>
-              ))}
-            </ul>
-          </CardContent>
-        </Card>
+        <p className="text-xs text-muted-foreground">
+          「概算」は決算短信サマリのEPS/BPS等から本ツールが計算した値です。公式の発表数値と差異が生じる場合があります。
+        </p>
       </section>
 
       <section className="flex flex-col gap-3">
-        <SectionHeading icon={ShieldAlert} title="リスク要因" />
-        <div className="flex flex-col gap-2.5">
-          {company.riskFactors.map((risk) => (
-            <Card key={risk.title}>
-              <CardContent className="flex flex-col gap-1">
-                <div className="flex items-center gap-2">
-                  <Badge variant={severityVariant[risk.severity]}>
-                    重要度: {risk.severity}
-                  </Badge>
-                  <span className="text-sm font-medium">{risk.title}</span>
-                </div>
-                <p className="text-sm text-muted-foreground">{risk.description}</p>
-              </CardContent>
-            </Card>
-          ))}
-        </div>
+        <SectionHeading icon={FileText} title="IR・適時開示" description="EDINET提出書類(直近30日)" />
+        <Suspense fallback={<DisclosuresSkeleton />}>
+          <DisclosuresSection code={code} />
+        </Suspense>
       </section>
 
-      <section className="flex flex-col gap-3">
-        <SectionHeading icon={FileText} title="IR要約" description={company.irSummary.period} />
-        <Card>
-          <CardHeader>
-            <CardTitle>{company.irSummary.title}</CardTitle>
-          </CardHeader>
-          <CardContent className="flex flex-col gap-3">
-            <ul className="flex flex-col gap-1.5 text-sm">
-              {company.irSummary.highlights.map((h, i) => (
-                <li key={i} className="flex gap-2">
-                  <span className="mt-1.5 size-1.5 shrink-0 rounded-full bg-primary" />
-                  <span>{h}</span>
-                </li>
-              ))}
-            </ul>
-            <p className="text-sm leading-relaxed text-muted-foreground">
-              {company.irSummary.summary}
-            </p>
-          </CardContent>
-        </Card>
-      </section>
-
-      <section className="flex flex-col gap-3">
-        <SectionHeading icon={Quote} title="経営陣のコメント" description="決算説明会・株主総会等での発言(要約)" />
-        <div className="flex flex-col gap-2.5">
-          {company.managementComments.map((c, i) => (
-            <Card key={i}>
-              <CardContent className="flex flex-col gap-1.5">
-                <p className="text-sm leading-relaxed">「{c.quote}」</p>
-                <p className="text-xs text-muted-foreground">
-                  {c.role} ・ {c.context}
-                </p>
-                <a
-                  href={managementCommentSourceUrl(company.code, c.quote)}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="flex w-fit items-center gap-1 text-xs text-primary hover:underline"
-                >
-                  <ExternalLink className="size-3" />
-                  情報源を見る(デモ用リンク)
-                </a>
-              </CardContent>
-            </Card>
-          ))}
-        </div>
-      </section>
-
-      <section className="flex flex-col gap-3">
-        <SectionHeading icon={Users} title="アナリスト見解" description="サンプルの見解分布(強気/中立/弱気)" />
-        <Card>
-          <CardContent className="flex flex-col gap-3">
-            <div className="flex items-center gap-3">
-              <Gauge className="size-4 text-muted-foreground" />
-              <span className="text-sm">
-                平均目標株価(サンプル): <strong>{formatJpy(avgTarget)}</strong>
-              </span>
-            </div>
-            <div className="flex h-2 overflow-hidden rounded-full bg-muted">
-              {(['強気', '中立', '弱気'] as const).map((r) => (
-                <div
-                  key={r}
-                  className={cn(
-                    r === '強気' && 'bg-positive',
-                    r === '中立' && 'bg-muted-foreground/50',
-                    r === '弱気' && 'bg-destructive',
-                  )}
-                  style={{
-                    width: `${(ratingCounts[r] / company.analystViews.length) * 100}%`,
-                  }}
-                />
-              ))}
-            </div>
-            <div className="flex flex-col gap-2.5">
-              {company.analystViews.map((v, i) => (
-                <div key={i} className="flex items-start gap-2.5 border-t border-border pt-2.5 first:border-t-0 first:pt-0">
-                  <Badge variant={ratingVariant[v.rating]}>{v.rating}</Badge>
-                  <div className="text-sm">
-                    <p>
-                      目標株価(サンプル): <strong>{formatJpy(v.targetPrice)}</strong>
-                    </p>
-                    <p className="text-muted-foreground">{v.comment}</p>
-                  </div>
-                </div>
-              ))}
-            </div>
-          </CardContent>
-        </Card>
-      </section>
-
-      <section className="flex flex-col gap-3">
-        <SectionHeading icon={Newspaper} title="関連ニュース" description="出典は情報源の種類を示す一般表記です" />
-        <div className="flex flex-col gap-2.5">
-          {company.news.map((n, i) => (
-            <Card key={i}>
-              <CardContent className="flex flex-col gap-1.5">
-                <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
-                  <Badge variant={toneVariant[n.tone]}>{n.tone}</Badge>
-                  <span>{n.sourceType}</span>
-                  <span>・</span>
-                  <span>{n.publishedAgoLabel}</span>
-                </div>
-                <p className="text-sm font-medium">{n.title}</p>
-                <p className="text-sm text-muted-foreground">{n.summary}</p>
-                <a
-                  href={newsSourceUrl(company.code, n.title)}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="flex w-fit items-center gap-1 text-xs text-primary hover:underline"
-                >
-                  <ExternalLink className="size-3" />
-                  元記事を見る(デモ用リンク)
-                </a>
-              </CardContent>
-            </Card>
-          ))}
-        </div>
-      </section>
-
-      <DisclaimerBanner />
+      <Card>
+        <CardContent className="flex gap-2.5 text-xs leading-relaxed text-muted-foreground">
+          <Info className="mt-0.5 size-3.5 shrink-0" />
+          <p>
+            株価はJ-Quants APIから取得した実データですが、無料プランのため最大12週間程度遅延しています。
+            IR・適時開示はEDINET APIから取得した実データ(直近30日分)です。
+            「統計的な値動き傾向」「参考レンジ」は過去データに基づく統計的な参考情報であり、将来の株価を予測・保証するものではなく、投資助言・売買の推奨ではありません。
+            ニュース・アナリスト見解・経営陣コメントは現時点でデータ提供元との契約がないため未対応です。投資判断はご自身の責任で行ってください。
+          </p>
+        </CardContent>
+      </Card>
     </div>
+  )
+}
+
+function DisclosuresSkeleton() {
+  return (
+    <Card>
+      <CardContent className="text-sm text-muted-foreground">EDINETから取得中…</CardContent>
+    </Card>
   )
 }
 
@@ -311,10 +176,44 @@ function Metric({ label, value }: { label: string; value: string }) {
   )
 }
 
-function TrendUpDot() {
+function NotConfiguredNotice({ code }: { code: string }) {
   return (
-    <span className="mt-1 flex size-4 shrink-0 items-center justify-center rounded-full bg-positive/15 text-positive">
-      <TrendingUp className="size-2.5" />
-    </span>
+    <NoticeCard
+      title="実データはまだ設定されていません"
+      description={`J-Quants APIキー(JQUANTS_MAIL_ADDRESS / JQUANTS_PASSWORD)が未設定のため、銘柄コード ${code} の実データを表示できません。`}
+    />
+  )
+}
+
+function FetchErrorNotice({ code }: { code: string }) {
+  return (
+    <NoticeCard
+      title="データの取得に失敗しました"
+      description={`銘柄コード ${code} のデータ取得中にエラーが発生しました。時間をおいて再度お試しください。`}
+    />
+  )
+}
+
+function InsufficientDataNotice({ code, name }: { code: string; name: string }) {
+  return (
+    <NoticeCard
+      title="統計計算に十分な履歴データがありません"
+      description={`${name}(${code})は取得できた株価データが少なく、統計的な傾向分析を行うには期間が不足しています。`}
+    />
+  )
+}
+
+function NoticeCard({ title, description }: { title: string; description: string }) {
+  return (
+    <Card>
+      <CardContent className="flex flex-col items-center gap-2 py-10 text-center">
+        <TrendingUp className="size-8 text-muted-foreground" />
+        <p className="font-medium">{title}</p>
+        <p className="max-w-md text-sm text-muted-foreground">{description}</p>
+        <Link href="/" className="mt-2 text-sm text-primary hover:underline">
+          トップに戻る
+        </Link>
+      </CardContent>
+    </Card>
   )
 }

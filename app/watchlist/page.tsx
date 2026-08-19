@@ -11,10 +11,16 @@ import { formatJpy, formatPct, cn } from '@/lib/utils'
 import { Card, CardContent } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { DisclaimerBanner } from '@/components/disclaimer-banner'
+import { RealWatchlistItem } from '@/components/real-watchlist-item'
 
 export default function WatchlistPage() {
-  const { codes, ready } = useWatchlist()
-  const watched = codes.map((code) => findCompany(code)).filter((c) => !!c)
+  const { entries, ready } = useWatchlist()
+  const realCodes = entries.filter((e) => e.kind === 'real').map((e) => e.code)
+  const watched = entries
+    .filter((e) => e.kind === 'demo')
+    .map((e) => findCompany(e.code))
+    .filter((c) => !!c)
+  const isEmpty = ready && watched.length === 0 && realCodes.length === 0
 
   return (
     <div className="flex flex-col gap-6 py-4">
@@ -28,7 +34,7 @@ export default function WatchlistPage() {
         </p>
       </div>
 
-      {ready && watched.length === 0 ? (
+      {isEmpty ? (
         <Card>
           <CardContent className="flex flex-col items-center gap-2 py-10 text-center">
             <Star className="size-8 text-muted-foreground" />
@@ -42,6 +48,14 @@ export default function WatchlistPage() {
         </Card>
       ) : null}
 
+      {realCodes.length > 0 ? (
+        <div className="flex flex-col gap-3">
+          {realCodes.map((code) => (
+            <RealWatchlistItem key={code} code={code} />
+          ))}
+        </div>
+      ) : null}
+
       <div className="flex flex-col gap-3">
         {watched.map((c) => {
           if (!c) return null
@@ -51,7 +65,7 @@ export default function WatchlistPage() {
           const latest = series[series.length - 1]
 
           return (
-            <Link key={c.code} href={`/stocks/${c.code}`}>
+            <Link key={c.code} href={`/demo/${c.code}`}>
               <Card className="transition-colors hover:border-primary/50 hover:bg-muted/40">
                 <CardContent className="flex items-center gap-3">
                   <div className="flex flex-1 flex-col gap-1">
@@ -89,7 +103,7 @@ export default function WatchlistPage() {
         })}
       </div>
 
-      {watched.length > 0 ? (
+      {watched.length > 0 || realCodes.length > 0 ? (
         <Card>
           <CardContent className="flex gap-2.5">
             <RefreshCw className="mt-0.5 size-4 shrink-0 text-muted-foreground" />

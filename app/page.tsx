@@ -26,7 +26,12 @@ export default function HomePage() {
 
       <section className="flex flex-col gap-3">
         <div className="flex items-center justify-between">
-          <h2 className="font-heading text-lg font-semibold">サンプル銘柄</h2>
+          <div>
+            <h2 className="font-heading text-lg font-semibold">デモ銘柄(架空企業)</h2>
+            <p className="text-xs text-muted-foreground">
+              実在企業ではないサンプルデータで画面イメージを確認できます
+            </p>
+          </div>
           <Link
             href="/watchlist"
             className="flex items-center gap-1 text-sm text-primary hover:underline"
@@ -37,7 +42,7 @@ export default function HomePage() {
         </div>
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
           {companies.map((c) => (
-            <Link key={c.code} href={`/stocks/${c.code}`}>
+            <Link key={c.code} href={`/demo/${c.code}`}>
               <Card className="h-full transition-colors hover:border-primary/50 hover:bg-muted/40">
                 <CardContent className="flex items-center justify-between gap-3">
                   <div className="flex flex-col gap-1.5">
