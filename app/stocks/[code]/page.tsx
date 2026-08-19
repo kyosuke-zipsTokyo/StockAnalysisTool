@@ -8,11 +8,13 @@ import {
   Quote,
   Gauge,
   Building2,
+  ExternalLink,
 } from 'lucide-react'
 
 import { companies, findCompany } from '@/lib/companies'
 import { generatePriceSeries } from '@/lib/price-series'
 import { computeTrendTendency, referenceRange } from '@/lib/stats'
+import { newsSourceUrl, managementCommentSourceUrl } from '@/lib/source-link'
 import { formatJpy, formatOku, formatPct, cn } from '@/lib/utils'
 
 import { PriceChart } from '@/components/price-chart'
@@ -209,6 +211,15 @@ export default async function StockDetailPage({
                 <p className="text-xs text-muted-foreground">
                   {c.role} ・ {c.context}
                 </p>
+                <a
+                  href={managementCommentSourceUrl(company.code, c.quote)}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="flex w-fit items-center gap-1 text-xs text-primary hover:underline"
+                >
+                  <ExternalLink className="size-3" />
+                  情報源を見る(デモ用リンク)
+                </a>
               </CardContent>
             </Card>
           ))}
@@ -271,6 +282,15 @@ export default async function StockDetailPage({
                 </div>
                 <p className="text-sm font-medium">{n.title}</p>
                 <p className="text-sm text-muted-foreground">{n.summary}</p>
+                <a
+                  href={newsSourceUrl(company.code, n.title)}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="flex w-fit items-center gap-1 text-xs text-primary hover:underline"
+                >
+                  <ExternalLink className="size-3" />
+                  元記事を見る(デモ用リンク)
+                </a>
               </CardContent>
             </Card>
           ))}

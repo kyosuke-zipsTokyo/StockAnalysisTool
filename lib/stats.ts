@@ -52,9 +52,13 @@ export interface TrendTendency {
   direction: 'up' | 'down' | 'flat'
   probabilityUpPct: number
   sampleSize: number
+  upCount: number
+  downCount: number
   avgForwardReturnPct: number
   horizonDays: number
   matchedState: string
+  currentRsi: number
+  maRelation: 'golden' | 'dead' | 'flat'
 }
 
 /**
@@ -72,19 +76,24 @@ export function computeTrendTendency(
   const sma5 = sma(closes, 5)
   const sma25 = sma(closes, 25)
 
+  function maRelationOf(s5: number, s25: number): 'golden' | 'dead' | 'flat' {
+    return s5 > s25 * 1.005 ? 'golden' : s5 < s25 * 0.995 ? 'dead' : 'flat'
+  }
+
   function bucket(i: number): string | null {
     const r = rsiArr[i]
     const s5 = sma5[i]
     const s25 = sma25[i]
     if (r == null || s5 == null || s25 == null) return null
     const rsiBucket = r < 35 ? 'low' : r > 65 ? 'high' : 'mid'
-    const maBucket = s5 > s25 * 1.005 ? 'golden' : s5 < s25 * 0.995 ? 'dead' : 'flat'
-    return `${rsiBucket}_${maBucket}`
+    return `${rsiBucket}_${maRelationOf(s5, s25)}`
   }
 
   const n = closes.length
   const currentBucket = bucket(n - 1)
   if (!currentBucket) return null
+  const currentRsi = rsiArr[n - 1] as number
+  const maRelation = maRelationOf(sma5[n - 1] as number, sma25[n - 1] as number)
 
   const matches: number[] = []
   for (let i = 30; i < n - horizon; i++) {
@@ -117,9 +126,13 @@ export function computeTrendTendency(
     direction,
     probabilityUpPct,
     sampleSize: matches.length,
+    upCount,
+    downCount: matches.length - upCount,
     avgForwardReturnPct,
     horizonDays: horizon,
     matchedState: stateLabels[currentBucket] ?? currentBucket,
+    currentRsi,
+    maRelation,
   }
 }
 

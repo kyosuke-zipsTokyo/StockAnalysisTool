@@ -1,4 +1,4 @@
-import { Info, TrendingDown, TrendingUp, Minus } from 'lucide-react'
+import { Info, TrendingDown, TrendingUp, Minus, ListChecks } from 'lucide-react'
 
 import type { ReferenceRange, TrendTendency } from '@/lib/stats'
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card'
@@ -46,6 +46,19 @@ export function TrendIndicator({
   const meta = directionMeta[trend.direction]
   const Icon = meta.icon
 
+  const rsiLevelLabel =
+    trend.currentRsi < 35
+      ? '低水準(売られ過ぎ気味)'
+      : trend.currentRsi > 65
+        ? '高水準(買われ過ぎ気味)'
+        : '中立圏'
+  const maRelationLabel =
+    trend.maRelation === 'golden'
+      ? '短期(5日)移動平均が中期(25日)移動平均を上回っています'
+      : trend.maRelation === 'dead'
+        ? '短期(5日)移動平均が中期(25日)移動平均を下回っています'
+        : '短期(5日)移動平均と中期(25日)移動平均はほぼ同水準です'
+
   return (
     <Card>
       <CardHeader>
@@ -89,6 +102,21 @@ export function TrendIndicator({
         <p className="text-xs text-muted-foreground">
           同条件下での{trend.horizonDays}営業日後の平均騰落率: {formatPct(trend.avgForwardReturnPct)}
         </p>
+
+        <div className="flex gap-2 rounded-lg border border-border bg-secondary/40 p-3">
+          <ListChecks className="mt-0.5 size-3.5 shrink-0 text-muted-foreground" />
+          <div className="text-xs leading-relaxed text-foreground">
+            <p className="font-medium">この結果の根拠</p>
+            <p className="mt-1 text-muted-foreground">
+              直近のRSI(14日)は{trend.currentRsi.toFixed(0)}で「{rsiLevelLabel}」の水準です。また、
+              {maRelationLabel}。過去の値動きの中でこれと同じ組み合わせ(RSIの水準×移動平均の位置関係)が
+              {trend.sampleSize}回出現しており、その{trend.horizonDays}営業日後に株価が
+              <span className="font-medium text-foreground">上昇していたのは{trend.upCount}回</span>、
+              <span className="font-medium text-foreground">下落していたのは{trend.downCount}回</span>
+              でした(上昇{trend.probabilityUpPct}%)。
+            </p>
+          </div>
+        </div>
 
         <div className="rounded-lg border border-border p-3">
           <p className="text-sm font-medium">
